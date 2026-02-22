@@ -1,0 +1,36 @@
+{
+    "name": "pi-system-theme-ssh-bridge",
+    "version": "0.1.0",
+    "description": "Sync pi theme with system appearance — works locally and over SSH via OSC 11 terminal queries",
+    "keywords": [
+        "pi-package",
+        "pi",
+        "pi-coding-agent",
+        "theme",
+        "ssh",
+        "dark-mode",
+        "ghostty"
+    ],
+    "author": "mise42",
+    "license": "MIT",
+    "type": "module",
+    "files": [
+        "index.ts",
+        "push-theme-override.sh",
+        "README.md",
+        "LICENSE"
+    ],
+    "pi": {
+        "extensions": [
+            "index.ts"
+        ]
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/mise42/pi-system-theme-ssh-bridge.git"
+    },
+    "homepage": "https://github.com/mise42/pi-system-theme-ssh-bridge#readme",
+    "bugs": {
+        "url": "https://github.com/mise42/pi-system-theme-ssh-bridge/issues"
+    }
+}
