@@ -216,8 +216,9 @@ let fd;
 try { fd = fs.openSync('/dev/tty', fs.constants.O_RDWR | fs.constants.O_NOCTTY | O_NONBLOCK); }
 catch { process.exit(1); }
 
-// Send OSC 11 query (BEL terminator is widely supported)
-try { fs.writeSync(fd, '\x1b]11;?\x07'); }
+// Send OSC 11 query.
+// Use ST terminator for better compatibility with tmux passthrough.
+try { fs.writeSync(fd, '\x1b]11;?\x1b\\'); }
 catch { try { fs.closeSync(fd); } catch {} process.exit(1); }
 
 const buf = Buffer.alloc(1024);
@@ -239,13 +240,21 @@ function tryRead() {
     }
 }
 
+function to8Bit(hex) {
+    if (!hex) return 0;
+    const h = String(hex);
+    if (h.length <= 2) return parseInt(h.padEnd(2, h[h.length - 1] || '0'), 16);
+    return parseInt(h.slice(0, 2), 16);
+}
+
 function done() {
     try { fs.closeSync(fd); } catch {}
-    const m = response.match(/\x1b\]11;rgb:([0-9a-fA-F]+)\\/([0-9a-fA-F]+)\\/([0-9a-fA-F]+)(?:\x07|\x1b\\\\)/);
+    // Keep parser permissive: tmux may wrap control sequences, but rgb payload remains stable.
+    const m = response.match(/rgb:([0-9a-fA-F]{2,4})\\/([0-9a-fA-F]{2,4})\\/([0-9a-fA-F]{2,4})/);
     if (m) {
-        const r = parseInt(m[1].slice(0, 2), 16);
-        const g = parseInt(m[2].slice(0, 2), 16);
-        const b = parseInt(m[3].slice(0, 2), 16);
+        const r = to8Bit(m[1]);
+        const g = to8Bit(m[2]);
+        const b = to8Bit(m[3]);
         const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
         process.stdout.write(luminance < 128 ? 'dark' : 'light');
     }
@@ -254,7 +263,7 @@ function done() {
 
 function poll() {
     tryRead();
-    if (response.includes('\x1b]11;') || Date.now() > deadline) return done();
+    if (response.includes('rgb:') || Date.now() > deadline) return done();
     setTimeout(poll, 16);
 }
 
