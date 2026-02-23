@@ -53,14 +53,18 @@ type OverridePayload = {
 const DEFAULT_CONFIG: Config = {
     darkTheme: "dark",
     lightTheme: "light",
-    pollMs: 2000,
+    pollMs: 8000,
     overrideFile: path.join(os.homedir(), ".pi", "agent", "system-theme-override.json"),
     overrideMaxAgeMs: 60_000,
 };
 
 const GLOBAL_CONFIG_PATH = path.join(os.homedir(), ".pi", "agent", "system-theme.json");
 const DETECTION_TIMEOUT_MS = 1200;
-const MIN_POLL_MS = 500;
+const MIN_POLL_MS = 1000;
+const OSC11_QUERY_TIMEOUT_MS = 1200;
+const OSC11_MIN_INTERVAL_MS = 15_000;
+const OSC11_DISABLE_AFTER_FAILURES = 3;
+const OSC11_DISABLE_COOLDOWN_MS = 60_000;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -202,45 +206,52 @@ async function readOverrideFile(filePath: string, maxAgeMs: number): Promise<App
 const OSC11_QUERY_SCRIPT = `
 'use strict';
 const fs = require('fs');
-const net = require('net');
 
+const O_NONBLOCK = fs.constants.O_NONBLOCK ?? 0;
 let fd;
-try { fd = fs.openSync('/dev/tty', fs.constants.O_RDWR | fs.constants.O_NOCTTY); }
+try { fd = fs.openSync('/dev/tty', fs.constants.O_RDWR | fs.constants.O_NOCTTY | O_NONBLOCK); }
 catch { process.exit(1); }
 
-// Send OSC 11 query
-fs.writeSync(fd, '\\x1b]11;?\\x1b\\\\');
+// Send OSC 11 query (BEL terminator is widely supported)
+try { fs.writeSync(fd, '\x1b]11;?\x07'); }
+catch { try { fs.closeSync(fd); } catch {} process.exit(1); }
 
-// Read response with polling + timeout
-const buf = Buffer.alloc(512);
+const buf = Buffer.alloc(1024);
 let response = '';
-const deadline = Date.now() + 1500;
+const deadline = Date.now() + 1000;
 
 function tryRead() {
-    try {
-        const n = fs.readSync(fd, buf, 0, buf.length);
-        if (n > 0) response += buf.toString('utf8', 0, n);
-    } catch {}
+    while (true) {
+        try {
+            const n = fs.readSync(fd, buf, 0, buf.length, null);
+            if (n <= 0) return;
+            response += buf.toString('utf8', 0, n);
+            if (response.length > 8192) response = response.slice(-4096);
+        } catch (err) {
+            const code = err && err.code;
+            if (code === 'EAGAIN' || code === 'EWOULDBLOCK') return;
+            return;
+        }
+    }
 }
 
-// Use a tight loop with small sleeps
+function done() {
+    try { fs.closeSync(fd); } catch {}
+    const m = response.match(/\x1b\]11;rgb:([0-9a-fA-F]+)\\/([0-9a-fA-F]+)\\/([0-9a-fA-F]+)(?:\x07|\x1b\\\\)/);
+    if (m) {
+        const r = parseInt(m[1].slice(0, 2), 16);
+        const g = parseInt(m[2].slice(0, 2), 16);
+        const b = parseInt(m[3].slice(0, 2), 16);
+        const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+        process.stdout.write(luminance < 128 ? 'dark' : 'light');
+    }
+    process.exit(0);
+}
+
 function poll() {
     tryRead();
-    if (response.includes('\\x1b\\\\') || response.includes('\\x07') || Date.now() > deadline) {
-        fs.closeSync(fd);
-        // Parse rgb:RRRR/GGGG/BBBB  (16-bit) or rgb:RR/GG/BB (8-bit)
-        const m = response.match(/rgb:([0-9a-fA-F]+)\\/([0-9a-fA-F]+)\\/([0-9a-fA-F]+)/);
-        if (m) {
-            // Normalize to 8-bit (take first 2 hex chars of each component)
-            const r = parseInt(m[1].substring(0, 2), 16);
-            const g = parseInt(m[2].substring(0, 2), 16);
-            const b = parseInt(m[3].substring(0, 2), 16);
-            const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-            process.stdout.write(luminance < 128 ? 'dark' : 'light');
-        }
-        process.exit(0);
-    }
-    setTimeout(poll, 20);
+    if (response.includes('\x1b]11;') || Date.now() > deadline) return done();
+    setTimeout(poll, 16);
 }
 
 poll();
@@ -251,11 +262,11 @@ function queryTerminalBackground(): Promise<Appearance | null> {
         const timer = setTimeout(() => {
             child.kill();
             resolve(null);
-        }, 3000);
+        }, OSC11_QUERY_TIMEOUT_MS + 300);
 
         const child = spawn(process.execPath, ["-e", OSC11_QUERY_SCRIPT], {
             stdio: ["ignore", "pipe", "ignore"],
-            timeout: 3000,
+            timeout: OSC11_QUERY_TIMEOUT_MS + 300,
         });
 
         let stdout = "";
@@ -369,15 +380,55 @@ async function detectOSAppearance(): Promise<Appearance | null> {
 // Unified detection: override file → terminal query → OS detection
 // ---------------------------------------------------------------------------
 
-async function resolveAppearance(config: Config): Promise<Appearance | null> {
+type Osc11State = {
+    lastCheckedAt: number;
+    lastAppearance: Appearance | null;
+    failures: number;
+    disabledUntil: number;
+};
+
+function isOsc11Enabled(): boolean {
+    const raw = String(process.env.PI_SYSTEM_THEME_OSC11_ENABLED ?? "1").trim().toLowerCase();
+    return raw !== "0" && raw !== "false" && raw !== "off";
+}
+
+function getOsc11MinIntervalMs(): number {
+    const raw = process.env.PI_SYSTEM_THEME_OSC11_MIN_INTERVAL_MS;
+    if (!raw) return OSC11_MIN_INTERVAL_MS;
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) return OSC11_MIN_INTERVAL_MS;
+    return Math.max(1000, parsed);
+}
+
+async function resolveAppearance(config: Config, osc11State: Osc11State): Promise<Appearance | null> {
     // 1. Override file (highest priority)
     const override = await readOverrideFile(config.overrideFile, config.overrideMaxAgeMs);
     if (override === "dark" || override === "light") return override;
     // "auto" or null → continue
 
-    // 2. Terminal query via OSC 11 (works over SSH)
-    const fromTerminal = await queryTerminalBackground();
-    if (fromTerminal) return fromTerminal;
+    // 2. Terminal query via OSC 11 (SSH only, throttled)
+    if (isSSHSession() && isOsc11Enabled()) {
+        const now = Date.now();
+        const minIntervalMs = getOsc11MinIntervalMs();
+
+        if (now >= osc11State.disabledUntil && now - osc11State.lastCheckedAt >= minIntervalMs) {
+            osc11State.lastCheckedAt = now;
+            const fromTerminal = await queryTerminalBackground();
+            if (fromTerminal) {
+                osc11State.lastAppearance = fromTerminal;
+                osc11State.failures = 0;
+                return fromTerminal;
+            }
+
+            osc11State.failures += 1;
+            if (osc11State.failures >= OSC11_DISABLE_AFTER_FAILURES) {
+                osc11State.disabledUntil = now + OSC11_DISABLE_COOLDOWN_MS;
+                osc11State.failures = 0;
+            }
+        }
+
+        if (osc11State.lastAppearance) return osc11State.lastAppearance;
+    }
 
     // 3. OS-level detection (local fallback)
     return detectOSAppearance();
@@ -420,6 +471,12 @@ export default function systemThemeBridge(pi: ExtensionAPI): void {
     let config: Config = { ...DEFAULT_CONFIG };
     let lastAppliedTheme: string | null = null;
     let didWarnCustomTheme = false;
+    const osc11State: Osc11State = {
+        lastCheckedAt: 0,
+        lastAppearance: null,
+        failures: 0,
+        disabledUntil: 0,
+    };
 
     function hasThemeOverrides(): boolean {
         return config.darkTheme !== DEFAULT_CONFIG.darkTheme || config.lightTheme !== DEFAULT_CONFIG.lightTheme;
@@ -448,7 +505,7 @@ export default function systemThemeBridge(pi: ExtensionAPI): void {
 
         inFlight = true;
         try {
-            const appearance = await resolveAppearance(config);
+            const appearance = await resolveAppearance(config, osc11State);
             if (!appearance) return;
 
             const targetTheme = appearance === "dark" ? config.darkTheme : config.lightTheme;
@@ -569,6 +626,10 @@ export default function systemThemeBridge(pi: ExtensionAPI): void {
 
     pi.on("session_start", async (_event, ctx) => {
         config = await loadConfig();
+        osc11State.lastCheckedAt = 0;
+        osc11State.lastAppearance = null;
+        osc11State.failures = 0;
+        osc11State.disabledUntil = 0;
 
         if (!shouldAutoSync(ctx)) {
             maybeWarnCustomTheme(ctx);

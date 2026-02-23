@@ -1,6 +1,6 @@
 {
     "name": "pi-system-theme-ssh-bridge",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Sync pi theme with system appearance — works locally and over SSH via OSC 11 terminal queries",
     "keywords": [
         "pi-package",

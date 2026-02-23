@@ -39,7 +39,7 @@ Use the `/system-theme` command inside pi to configure:
 
 1. **Dark theme** name (default: `dark`)
 2. **Light theme** name (default: `light`)
-3. **Poll interval** in ms (default: `2000`)
+3. **Poll interval** in ms (default: `8000`)
 
 Settings are saved to `~/.pi/agent/system-theme.json` (same location as `pi-system-theme`, so existing config carries over).
 
@@ -73,6 +73,8 @@ For environments where neither OSC 11 nor OS detection works, you can push an ov
 |----------|---------|-------------|
 | `PI_SYSTEM_THEME_OVERRIDE_FILE` | `~/.pi/agent/system-theme-override.json` | Override file path |
 | `PI_SYSTEM_THEME_OVERRIDE_MAX_AGE_MS` | `60000` | Max age before override is considered stale |
+| `PI_SYSTEM_THEME_OSC11_ENABLED` | `1` | Enable/disable OSC 11 terminal query (`0` to disable) |
+| `PI_SYSTEM_THEME_OSC11_MIN_INTERVAL_MS` | `15000` | Minimum interval between OSC 11 probes in SSH sessions |
 
 ## Compatibility
 
