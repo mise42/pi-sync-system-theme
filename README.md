@@ -54,6 +54,39 @@ Use the `/system-theme` command inside pi to configure:
 
 Settings are saved to `~/.pi/agent/system-theme.json` (same location as `pi-system-theme`, so existing config carries over).
 
+### Runtime commands
+
+- `/system-theme` — configure dark/light theme mapping and poll interval
+- `/system-theme-refresh` — manually re-run detection and apply mapped theme (**best-effort**)
+- `/system-theme-debug` — print detection trace (override / OSC11 / OS fallback) for troubleshooting
+- `/system-theme-push dark|light|auto` — write override appearance manually on the current machine
+
+### Reliable-first behavior (default)
+
+To reduce input lag and TTY contention in long-running remote sessions:
+
+- Startup and `/resume`: performs an immediate OSC11 reconciliation attempt
+- Background polling: prefers override + OS fallback (does **not** continuously probe OSC11)
+- Manual fallback: `/system-theme-refresh` forces a one-shot OSC11 probe (may still fail in some remote TTY setups)
+
+This keeps startup correction intuitive while minimizing runtime interference.
+
+### Recommended remote workflow (stable)
+
+When Pi runs on a remote host, the most reliable setup is:
+
+1. Run Pi remotely (SSH/tmux as usual)
+2. Push override updates from your **local machine** when local appearance changes
+3. Let remote Pi apply the override on next tick (or immediately on startup/resume)
+
+Example local push:
+
+```bash
+./push-theme-override.sh user@remote-host
+```
+
+In practice, local push + remote reconcile is more stable than relying on continuous OSC11 probing during an active remote session.
+
 ## Override file (optional)
 
 For environments where neither OSC 11 nor OS detection works, you can push an override file manually:
