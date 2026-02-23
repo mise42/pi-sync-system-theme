@@ -80,7 +80,7 @@ For environments where neither OSC 11 nor OS detection works, you can push an ov
 
 ## ⚠️ Performance tuning notes (important)
 
-This extension queries terminal background color (OSC 11) in SSH sessions. Aggressive polling can cause terminal artifacts (garbled startup output) or input lag on some terminal/SSH combinations.
+This extension queries terminal background color (OSC 11) in SSH/tmux sessions. Aggressive polling can cause terminal artifacts (garbled startup output) or input lag on some terminal/SSH combinations.
 
 Recommended ranges:
 
@@ -109,13 +109,14 @@ export PI_SYSTEM_THEME_OSC11_ENABLED=0
 | `PI_SYSTEM_THEME_OVERRIDE_FILE` | `~/.pi/agent/system-theme-override.json` | Override file path |
 | `PI_SYSTEM_THEME_OVERRIDE_MAX_AGE_MS` | `60000` | Max age before override is considered stale |
 | `PI_SYSTEM_THEME_OSC11_ENABLED` | `1` | Enable/disable OSC 11 terminal query (`0` to disable) |
-| `PI_SYSTEM_THEME_OSC11_MIN_INTERVAL_MS` | `15000` | Minimum interval between OSC 11 probes in SSH sessions |
+| `PI_SYSTEM_THEME_OSC11_MIN_INTERVAL_MS` | `15000` | Minimum interval between OSC 11 probes in SSH/tmux sessions |
 
 ## Compatibility
 
 - **Terminals:** Any terminal supporting OSC 11 color queries (Ghostty, iTerm2, kitty, foot, WezTerm, xterm, etc.)
 - **OS detection:** macOS, Linux (GNOME gsettings), Windows
 - **SSH:** Works transparently — no special setup required
+- **tmux:** Supported (including long-lived sessions where `SSH_*` env vars may be missing)
 - **Ghostty `theme = auto`:** Fully supported. When Ghostty switches colors, the next poll detects it.
 
 ## Migrating from pi-system-theme

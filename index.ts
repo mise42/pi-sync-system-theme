@@ -116,6 +116,10 @@ function isSSHSession(): boolean {
     return !!(process.env.SSH_CONNECTION || process.env.SSH_TTY || process.env.SSH_CLIENT);
 }
 
+function isTmuxSession(): boolean {
+    return typeof process.env.TMUX === "string" && process.env.TMUX.length > 0;
+}
+
 // ---------------------------------------------------------------------------
 // Config I/O  (reads ~/.pi/agent/system-theme.json written by /system-theme)
 // ---------------------------------------------------------------------------
@@ -406,8 +410,9 @@ async function resolveAppearance(config: Config, osc11State: Osc11State): Promis
     if (override === "dark" || override === "light") return override;
     // "auto" or null → continue
 
-    // 2. Terminal query via OSC 11 (SSH only, throttled)
-    if (isSSHSession() && isOsc11Enabled()) {
+    // 2. Terminal query via OSC 11 (SSH/tmux, throttled)
+    // tmux sessions may not carry SSH_* vars, so include TMUX explicitly.
+    if ((isSSHSession() || isTmuxSession()) && isOsc11Enabled()) {
         const now = Date.now();
         const minIntervalMs = getOsc11MinIntervalMs();
 
