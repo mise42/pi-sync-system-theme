@@ -11,7 +11,7 @@ The extension uses a three-layer detection strategy (in priority order):
 | Priority | Strategy | When it helps |
 |----------|----------|---------------|
 | 1 | **Override file** (`~/.pi/agent/system-theme-override.json`) | Manual push from another machine |
-| 2 | **Terminal query** (OSC 11 background-color) | SSH sessions — escape sequences travel through the SSH tunnel back to your local Ghostty, which responds with its current background color |
+| 2 | **Terminal query** (OSC 11 background-color) | Preferred in interactive terminal sessions (local/SSH/tmux) for fast theme detection |
 | 3 | **OS-level detection** (macOS `defaults` / GNOME `gsettings` / Windows `reg`) | Local sessions without a capable terminal |
 
 ### Why it works over SSH
@@ -80,7 +80,7 @@ For environments where neither OSC 11 nor OS detection works, you can push an ov
 
 ## ⚠️ Performance tuning notes (important)
 
-This extension queries terminal background color (OSC 11) in SSH/tmux sessions. Aggressive polling can cause terminal artifacts (garbled startup output) or input lag on some terminal/SSH combinations.
+This extension queries terminal background color (OSC 11) in interactive sessions (local/SSH/tmux). Aggressive polling can cause terminal artifacts (garbled startup output) or input lag on some terminal/SSH combinations.
 
 Recommended ranges:
 
@@ -109,7 +109,7 @@ export PI_SYSTEM_THEME_OSC11_ENABLED=0
 | `PI_SYSTEM_THEME_OVERRIDE_FILE` | `~/.pi/agent/system-theme-override.json` | Override file path |
 | `PI_SYSTEM_THEME_OVERRIDE_MAX_AGE_MS` | `60000` | Max age before override is considered stale |
 | `PI_SYSTEM_THEME_OSC11_ENABLED` | `1` | Enable/disable OSC 11 terminal query (`0` to disable) |
-| `PI_SYSTEM_THEME_OSC11_MIN_INTERVAL_MS` | `15000` | Minimum interval between OSC 11 probes in SSH/tmux sessions |
+| `PI_SYSTEM_THEME_OSC11_MIN_INTERVAL_MS` | `15000` | Minimum interval between OSC 11 probes in interactive sessions |
 
 ## Compatibility
 
