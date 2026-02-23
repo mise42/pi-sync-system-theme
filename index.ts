@@ -627,20 +627,34 @@ export default function systemThemeBridge(pi: ExtensionAPI): void {
 
     // -- Lifecycle ------------------------------------------------------------
 
-    pi.on("session_start", async (_event, ctx) => {
-        config = await loadConfig();
+    function resetOsc11State(): void {
         osc11State.lastCheckedAt = 0;
         osc11State.lastAppearance = null;
         osc11State.failures = 0;
         osc11State.disabledUntil = 0;
+    }
+
+    async function applyOnSessionEnter(ctx: ExtensionContext): Promise<void> {
+        config = await loadConfig();
+        resetOsc11State();
 
         if (!shouldAutoSync(ctx)) {
             maybeWarnCustomTheme(ctx);
             return;
         }
 
+        // Force immediate theme reconciliation when entering a session
+        // (especially important after /resume from a differently-themed session).
         await tick(ctx);
         restartPolling(ctx);
+    }
+
+    pi.on("session_start", async (_event, ctx) => {
+        await applyOnSessionEnter(ctx);
+    });
+
+    pi.on("session_switch", async (_event, ctx) => {
+        await applyOnSessionEnter(ctx);
     });
 
     pi.on("session_shutdown", () => {

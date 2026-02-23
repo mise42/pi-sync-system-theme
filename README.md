@@ -118,6 +118,7 @@ export PI_SYSTEM_THEME_OSC11_ENABLED=0
 - **SSH:** Works transparently — no special setup required
 - **tmux:** Supported (including long-lived sessions where `SSH_*` env vars may be missing)
 - **Ghostty `theme = auto`:** Fully supported. When Ghostty switches colors, the next poll detects it.
+- **Session resume:** On `/resume`, the extension immediately re-checks appearance and reconciles the active theme.
 
 ## Migrating from pi-system-theme
 
